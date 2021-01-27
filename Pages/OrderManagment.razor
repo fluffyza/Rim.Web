@@ -1,0 +1,422 @@
+﻿@page "/OrderManagment"
+
+@inject IJSRuntime JSRuntime;
+
+@inject OrderClient _orderClient;
+@inject ProductClient _productClient;
+
+<h1>Order Management</h1>
+
+<div class="card container-slider">
+	<div class="card-body container-slider-inner">
+		@if (loadingList)
+		{
+			<div class="w-100 text-center">
+				<p>Loading...</p>
+			</div>
+		}
+		else
+		{
+			<div class="card-title">
+				<div class="row">
+					<div class="col-8">
+						<h5>Orders</h5>
+					</div>
+					<div class="col-2 text-right">
+						<form class="form-inline">
+							<div class="form-group">
+								<label for="page-size" class="px-2">Page Size</label>
+								<select id="page-size" class="form-control" @onchange="@pageSizeChange">
+									@foreach (var item in pageSizes)
+									{
+										if (item == pageSize)
+										{
+											<option value="@item" selected>@item</option>
+										}
+										else
+										{
+											<option value="@item">@item</option>
+										}
+									}
+								</select>
+							</div>
+						</form>
+					</div>
+					<div class="col-2">
+					</div>
+				</div>
+			</div>
+			<table class="table scrollbar square thin">
+				<thead>
+					<tr>
+						<th class="">Product Title</th>
+						<th class="">Address</th>
+						<th class="">Recipient</th>
+						<th class="">Price</th>
+						<th class="">Completed</th>
+						<th class="">Cancelled</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					@if (OrderPaged.Orders.Count > 0)
+					{
+						@foreach (var item in OrderPaged.Orders)
+						{
+							<tr id="order-@item.Order.Id">
+								<td>
+									@item.Product.ProductTitle
+								</td>
+								<td>
+									@item.Order.OrderAddress
+								</td>
+								<td>
+									@item.Order.OrderRecipient
+								</td>
+								<td>
+									@item.Product.ProductPrice
+								</td>
+								<td>
+									@item.Order.OrderCompleted
+								</td>
+								<td>
+									@item.Order.OrderCancelled
+								</td>
+								<td>
+									<div class="input-field">
+										<i class="fa fa-ellipsis-v pointer activate-slider" @onclick="(() => EditRow(item.Order.Id))"></i>
+									</div>
+								</td>
+							</tr>
+						}
+					}
+					else
+					{
+						<tr>
+							<td colspan="5" class="text-center">
+								<h3 class="card-title text-center text-muted p-3">No orders found</h3>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+			<div class="row">
+				<div class="col-12 float-right text-right">
+					<nav aria-label="Page navigation example">
+						<ul class="pagination float-right">
+							@if (OrderPaged.Pagination.PageNumber > 1)
+							{
+								<li class="page-item"><div class="page-link pointer" @onclick="Previous">Previous</div></li>
+							}
+							@for (int i = 1; i < OrderPaged.Pagination.TotalPageCount; i++)
+							{
+								var temp = i;
+								<li class="page-item"><div class="page-link pointer" @onclick="(() => PageSelected(temp))">@i</div></li>
+							}
+							@if (OrderPaged.Pagination.PageNumber < OrderPaged.Pagination.TotalPageCount)
+							{
+								<li class="page-item"><div class="page-link pointer" @onclick="Next">Next</div></li>
+							}
+						</ul>
+					</nav>
+				</div>
+			</div>
+		}
+	</div>
+	<div class="overlay-slider">
+		<div class="card-body scrollbar square thin" id="order-overlay">
+			<div class="card-title">
+				<div class="card-title">
+					<h5>Order<i class="float-right fa fa-times pointer de-activate-slider" onclick=""> </i></h5>
+				</div>
+			</div>
+			@if (LoadingOverlay)
+			{
+				<div class="w-100 text-center">
+					<p>Loading...</p>
+				</div>
+			}
+			else
+			{
+				<form class="needs-validation was-validated">
+					<div class="form-row">
+						<div class="form-group col-md-6">
+							<label>Product Title</label>
+							<input class="form-control" @bind-value="selectedOrder.Product.ProductTitle" @bind-value:event="oninput" disabled />
+						</div>
+						<div class="form-group col-md-6">
+							<label>Product Price</label>
+							<input class="form-control" @bind-value="selectedOrder.Product.ProductPrice" @bind-value:event="oninput" disabled />
+						</div>
+					</div>
+					<div class="form-row">
+						<div class="form-group col-md-4">
+							<label>Address</label>
+							<input maxlength="250" class="form-control" @bind-value="selectedOrder.Order.OrderAddress" @bind-value:event="oninput" required />
+							<div class="invalid-feedback">Invalid</div>
+						</div>
+						<div class="form-group col-md-4">
+							<label>Recipient</label>
+							<input maxlength="250" type="text" class="form-control" @bind-value="selectedOrder.Order.OrderRecipient" @bind-value:event="oninput" required />
+						</div>
+					</div>
+					<div class="form-row">
+						<div class="form-group col-md-6">
+							<label>Completed</label>
+							<select class="form-control" @bind-value="completed" @bind-value:event="oninput">
+								<option value='1'>True</option>
+								<option value='0'>False</option>
+							</select>
+						</div>
+						<div class="form-group col-md-6">
+							<label>Cancelled</label>
+							<select class="form-control" @bind-value="cancelled" @bind-value:event="oninput">
+								<option value='1'>True</option>
+								<option value='0'>False</option>
+							</select>
+						</div>
+					</div>
+
+					<div class="form-row">
+						<div class="form-group col-md-6">
+							<label>Product</label>
+							<select class="form-control" @bind-value="productId" @bind-value:event="oninput" @onchange="@ProductChanged">
+								@foreach (var item in Products)
+								{
+									if (item.Id == productId)
+									{
+										<option value='@item.Id' selected>@item.ProductTitle (@item.ProductPrice)</option>
+									}
+									else
+									{
+										<option value='@item.Id'>@item.ProductTitle (@item.ProductPrice)</option>
+									}
+								}
+							</select>
+						</div>
+					</div>
+					<div class="float-right">
+						<div class="form-group ">
+							@if (isEdit)
+							{
+								<button type="button" class="btn btn-danger" @onclick="(() => Delete())" value="Delete">Delete</button>
+							}
+							<button type="button" class="btn btn-secondary" @onclick="(() => CancelOverlay())" value="Cancel">Cancel</button>
+							<button type="button" class="btn btn-primary" @onclick="(() => SaveEdit())" value="Save">Save</button>
+						</div>
+					</div>
+				</form>
+			}
+		</div>
+	</div>
+</div>
+
+@code {
+
+	public OrderPagedModel OrderPaged { get; set; } = new OrderPagedModel()
+	{
+		Pagination = new PaginationModel(),
+		Orders = new List<OrderAdvancedModel>()
+	};
+
+	private OrderAdvancedModel selectedOrder { get; set; } = new OrderAdvancedModel()
+	{
+		Order = new OrderModel(),
+		Product = new ProductModel()
+	};
+
+	private List<ProductModel> Products { get; set; } = new List<ProductModel>();
+
+	private List<int> pageSizes { get; set; } = new List<int>() { 3, 6, 9 };
+
+	private bool loadingList { get; set; } = true;
+	private bool LoadingOverlay { get; set; } = true;
+
+
+	private int pageSize = 3;
+	private int page = 1;
+
+	private bool isEdit = false;
+	private int completed = 0;
+	private int cancelled = 0;
+	private int productId = 0;
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			try
+			{
+				loadingList = true;
+				LoadingOverlay = false;
+
+				await PageLoad();
+
+				loadingList = false;
+			}
+			catch (Exception e)
+			{
+			}
+			StateHasChanged();
+		}
+	}
+
+	private async Task PageLoad()
+	{
+		try
+		{
+			await GetPagedOrders(page, pageSize);
+			await GetProducts();
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task pageSizeChange(ChangeEventArgs e)
+	{
+		loadingList = true;
+		pageSize = Convert.ToInt32(e.Value);
+		await GetPagedOrders(page, pageSize);
+		loadingList = false;
+	}
+
+	private async Task ProductChanged(ChangeEventArgs e)
+	{
+		productId = Convert.ToInt32(e.Value);
+		selectedOrder.Product = Products.FirstOrDefault(x => x.Id == productId);
+		loadingList = false;
+	}
+
+	private async Task GetPagedOrders(int page, int pageSize)
+	{
+		try
+		{
+			OrderPaged = await _orderClient.GetPagedOrderAsync(page, pageSize) as OrderPagedModel;
+		}
+		catch (Exception ex)
+		{
+			OrderPaged = new OrderPagedModel();
+		}
+	}
+
+	private async Task GetProducts()
+	{
+		try
+		{
+			Products = await _productClient.GetAllProductsAsync() as List<ProductModel>;
+		}
+		catch (Exception ex)
+		{
+			Products = new List<ProductModel>();
+		}
+	}
+
+	private async Task EditRow(int id)
+	{
+		try
+		{
+			LoadingOverlay = true;
+			isEdit = true;
+			selectedOrder = OrderPaged.Orders.FirstOrDefault(x => x.Order.Id == id);
+			cancelled = selectedOrder.Order.OrderCancelled ? 1 : 0;
+			completed = selectedOrder.Order.OrderCompleted ? 1 : 0;
+			await OpenOverlay();
+			LoadingOverlay = false;
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+	private async Task CancelOverlay()
+	{
+		await JSRuntime.InvokeAsync<string>
+			("ManualCloseSlider",
+			"order-overlay");
+	}
+
+	private async Task Previous()
+	{
+		try
+		{
+			page -= 1;
+			await GetPagedOrders(page, pageSize);
+
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task Next()
+	{
+		try
+		{
+			page += 1;
+			await GetPagedOrders(page, pageSize);
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task PageSelected(int pageSelected)
+	{
+		try
+		{
+			page = pageSelected;
+			await GetPagedOrders(page, pageSize);
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+
+	private async Task OpenOverlay()
+	{
+		await JSRuntime.InvokeAsync<string>
+			("ManualOpenSlider",
+			"order-overlay");
+	}
+
+	private async Task Delete()
+	{
+		try
+		{
+			await _orderClient.DeleteOrderByIdAsync(selectedOrder.Order.Id);
+			await PageLoad();
+			await CancelOverlay();
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task SaveEdit()
+	{
+		try
+		{
+			if (!string.IsNullOrEmpty(selectedOrder.Order.OrderAddress) ||
+				!string.IsNullOrEmpty(selectedOrder.Order.OrderRecipient))
+			{
+				selectedOrder.Order.OrderCompleted = completed == 1 ? true : false;
+				selectedOrder.Order.OrderCancelled = cancelled == 1 ? true : false;
+				selectedOrder.Order.ProductId = productId;
+				if (isEdit)
+				{
+					await _orderClient.UpdateOrderAsync(selectedOrder.Order);
+				}
+
+				isEdit = false;
+				await PageLoad();
+				await CancelOverlay();
+			}
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+}

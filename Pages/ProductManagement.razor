@@ -1,0 +1,365 @@
+﻿@page "/ProductManagement"
+
+@inject IJSRuntime JSRuntime;
+
+@inject ProductClient _productClient;
+
+<h1>Product Management</h1>
+
+<div class="card container-slider">
+	<div class="card-body container-slider-inner">
+		@if (loadingList)
+		{
+			<div class="w-100 text-center">
+				<p>Loading...</p>
+			</div>
+		}
+		else
+		{
+			<div class="card-title">
+				<div class="row">
+					<div class="col-8">
+						<h5>Products</h5>
+					</div>
+					<div class="col-2 text-right">
+						<form class="form-inline">
+							<div class="form-group">
+								<label for="page-size" class="px-2">Page Size</label>
+								<select id="page-size" class="form-control" @onchange="@pageSizeChange">
+									@foreach (var item in pageSizes)
+									{
+										if (item == pageSize)
+										{
+											<option value="@item" selected>@item</option>
+										}
+										else
+										{
+											<option value="@item">@item</option>
+										}
+									}
+								</select>
+							</div>
+						</form>
+					</div>
+					<div class="col-2">
+						<i class="fa fa-plus float-right pointer activate-slider float-right" @onclick="AddNewProduct"></i>
+					</div>
+				</div>
+			</div>
+			<table class="table scrollbar square thin">
+				<thead>
+					<tr>
+						<th class="">Guid</th>
+						<th class="">Title</th>
+						<th class="">Price</th>
+						<th class="">Stock Count</th>
+						<th></th>
+					</tr>
+				</thead>
+				<tbody>
+					@if (ProductPaged.Products.Count > 0)
+					{
+						@foreach (var item in ProductPaged.Products)
+						{
+							<tr id="product-@item.Id">
+								<td>
+									@item.ProductGuid
+								</td>
+								<td>
+									@item.ProductTitle
+								</td>
+								<td>
+									@item.ProductPrice
+								</td>
+								<td>
+									@item.StockCount
+								</td>
+								<td>
+									<div class="input-field">
+										<i class="fa fa-ellipsis-v pointer activate-slider" @onclick="(() => EditRow(item.Id))"></i>
+									</div>
+								</td>
+							</tr>
+						}
+					}
+					else
+					{
+						<tr>
+							<td colspan="5" class="text-center">
+								<h3 class="card-title text-center text-muted p-3">No products found</h3>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+			<div class="row">
+				<div class="col-12 float-right text-right">
+					<nav aria-label="Page navigation example">
+						<ul class="pagination float-right">
+							@if (ProductPaged.Pagination.PageNumber > 1)
+							{
+								<li class="page-item"><div class="page-link pointer" @onclick="Previous">Previous</div></li>
+							}
+							@for (int i = 1; i < ProductPaged.Pagination.TotalPageCount; i++)
+							{
+								var temp = i;
+								<li class="page-item"><div class="page-link pointer" @onclick="(() => PageSelected(temp))">@i</div></li>
+							}
+							@if (ProductPaged.Pagination.PageNumber < ProductPaged.Pagination.TotalPageCount)
+							{
+								<li class="page-item"><div class="page-link pointer" @onclick="Next">Next</div></li>
+							}
+						</ul>
+					</nav>
+				</div>
+			</div>
+		}
+	</div>
+	<div class="overlay-slider">
+		<div class="card-body scrollbar square thin" id="product-overlay">
+			<div class="card-title">
+				<div class="card-title">
+					<h5>Product<i class="float-right fa fa-times pointer de-activate-slider" onclick=""> </i></h5>
+				</div>
+			</div>
+			@if (LoadingOverlay)
+			{
+				<div class="w-100 text-center">
+					<p>Loading...</p>
+				</div>
+			}
+			else
+			{
+				<form class="needs-validation was-validated">
+					<div class="form-row">
+						<div class="form-group col-md-6">
+							<label>GUID</label>
+							<input class="form-control" @bind-value="selectedProduct.ProductGuid" @bind-value:event="oninput" disabled />
+						</div>
+					</div>
+					<div class="form-row">
+						<div class="form-group col-md-4">
+							<label>Title</label>
+							<input maxlength="250" class="form-control" @bind-value="selectedProduct.ProductTitle" @bind-value:event="oninput" required />
+							<div class="invalid-feedback">Invalid</div>
+						</div>
+						<div class="form-group col-md-4">
+							<label>Price</label>
+							<input type="number" step="any" class="form-control" @bind-value="selectedProduct.ProductPrice" @bind-value:event="oninput" required />
+						</div>
+						<div class="form-group col-md-4">
+							<label>Count</label>
+							<input type="number" class="form-control" @bind-value="selectedProduct.StockCount" @bind-value:event="oninput" required />
+						</div>
+					</div>
+					<div class="float-right">
+						<div class="form-group ">
+							@if (isEdit)
+							{
+								<button type="button" class="btn btn-danger" @onclick="(() => Delete())" value="Delete">Delete</button>
+							}
+							<button type="button" class="btn btn-secondary" @onclick="(() => CancelOverlay())" value="Cancel">Cancel</button>
+							<button type="button" class="btn btn-primary" @onclick="(() => SaveEdit())" value="Save">Save</button>
+						</div>
+					</div>
+				</form>
+			}
+		</div>
+	</div>
+</div>
+
+@code {
+
+	public ProductPagedModel ProductPaged { get; set; } = new ProductPagedModel()
+	{
+		Pagination = new PaginationModel(),
+		Products = new List<ProductModel>()
+	};
+
+	private ProductModel selectedProduct { get; set; } = new ProductModel();
+	private List<int> pageSizes { get; set; } = new List<int>() { 3, 6, 9 };
+
+	private bool loadingList { get; set; } = true;
+	private bool LoadingOverlay { get; set; } = true;
+
+
+	private int pageSize = 3;
+	private int page = 1;
+
+	private bool isEdit = false;
+	private bool isAdd = false;
+
+	protected override async Task OnAfterRenderAsync(bool firstRender)
+	{
+		if (firstRender)
+		{
+			try
+			{
+				loadingList = true;
+				LoadingOverlay = false;
+
+				await PageLoad();
+
+				loadingList = false;
+			}
+			catch (Exception e)
+			{
+			}
+			StateHasChanged();
+		}
+	}
+
+	private async Task PageLoad()
+	{
+		try
+		{
+			await GetPagedProducts(page, pageSize);
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task pageSizeChange(ChangeEventArgs e)
+	{
+		loadingList = true;
+		pageSize = Convert.ToInt32(e.Value);
+		await GetPagedProducts(page, pageSize);
+		loadingList = false;
+	}
+
+	private async Task GetPagedProducts(int page, int pageSize)
+	{
+		try
+		{
+			ProductPaged = await _productClient.GetPagedProductAsync(page, pageSize) as ProductPagedModel;
+		}
+		catch (Exception ex)
+		{
+			ProductPaged = new ProductPagedModel();
+		}
+	}
+
+
+	private async Task AddNewProduct()
+	{
+		try
+		{
+			isEdit = false;
+			isAdd = true;
+			selectedProduct = new ProductModel() { IsActive = true, ProductGuid = Guid.NewGuid() };
+			await OpenOverlay();
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+	private async Task EditRow(int id)
+	{
+		try
+		{
+			LoadingOverlay = true;
+			isEdit = true;
+			isAdd = false;
+			selectedProduct = ProductPaged.Products.FirstOrDefault(x => x.Id == id);
+			await OpenOverlay();
+			LoadingOverlay = false;
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+	private async Task CancelOverlay()
+	{
+		await JSRuntime.InvokeAsync<string>
+			("ManualCloseSlider",
+			"product-overlay");
+	}
+
+	private async Task Previous()
+	{
+		try
+		{
+			page -= 1;
+			await GetPagedProducts(page, pageSize);
+
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task Next()
+	{
+		try
+		{
+			page += 1;
+			await GetPagedProducts(page, pageSize);
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task PageSelected(int pageSelected)
+	{
+		try
+		{
+			page = pageSelected;
+			await GetPagedProducts(page, pageSize);
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+
+	private async Task OpenOverlay()
+	{
+		await JSRuntime.InvokeAsync<string>
+			("ManualOpenSlider",
+			"product-overlay");
+	}
+
+	private async Task Delete()
+	{
+		try
+		{
+			await _productClient.DeleteProductByIdAsync(selectedProduct.Id);
+			await PageLoad();
+			await CancelOverlay();
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+
+	private async Task SaveEdit()
+	{
+		try
+		{
+			if (!string.IsNullOrEmpty(selectedProduct.ProductTitle))
+			{
+				if (isAdd)
+				{
+					await _productClient.InsertProductAsync(selectedProduct);
+				}
+				else if (isEdit)
+				{
+					await _productClient.UpdateProductAsync(selectedProduct);
+				}
+
+				isAdd = false;
+				isEdit = false;
+				await PageLoad();
+				await CancelOverlay();
+			}
+		}
+		catch (Exception e)
+		{
+		}
+	}
+
+}
